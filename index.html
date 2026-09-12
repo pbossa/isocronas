@@ -1,0 +1,1150 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>Isocronas · Área accesible en coche</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+:root {
+  --bg: #0f1420;
+  --panel: rgba(17, 24, 39, 0.92);
+  --panel-border: rgba(255, 255, 255, 0.08);
+  --text: #e5e9f0;
+  --text-dim: #8b93a7;
+  --accent: #38bdf8;
+  --accent-2: #22d3ee;
+  --danger: #f87171;
+  --radius: 14px;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  --font: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
+/* ===== Mapa ===== */
+.map {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+}
+
+.leaflet-container { background: #0b0f1a; font-family: var(--font); }
+
+/* Marcador de origen */
+.origin-marker {
+  background: transparent !important;
+  border: none !important;
+}
+.origin-marker__dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 4px solid #fff;
+  box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.35), 0 4px 10px rgba(0,0,0,.5);
+  cursor: grab;
+}
+.origin-marker__pulse {
+  position: absolute;
+  inset: -14px;
+  border-radius: 50%;
+  background: rgba(56, 189, 248, 0.25);
+  animation: pulse 2s ease-out infinite;
+}
+@keyframes pulse {
+  0%   { transform: scale(0.6); opacity: 0.8; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+/* ===== Panel ===== */
+.panel {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  bottom: 16px;
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  z-index: 1000;
+  background: var(--panel);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: transform 0.3s ease;
+}
+
+.panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid var(--panel-border);
+}
+.panel__brand { display: flex; gap: 12px; align-items: center; }
+.panel__logo {
+  font-size: 26px;
+  color: var(--accent);
+  background: rgba(56, 189, 248, 0.12);
+  width: 46px; height: 46px;
+  display: grid; place-items: center;
+  border-radius: 12px;
+}
+.panel__brand h1 { margin: 0; font-size: 18px; letter-spacing: 0.3px; }
+.panel__brand p { margin: 2px 0 0; font-size: 12px; color: var(--text-dim); }
+
+.panel__toggle {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--panel-border);
+  color: var(--text);
+  width: 30px; height: 30px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+.panel--collapsed .panel__body { display: none; }
+
+.panel__body {
+  padding: 14px 16px 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.section__label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+.section--row { display: flex; gap: 8px; }
+.section--row .btn { flex: 1; }
+
+/* Búsqueda */
+.search { display: flex; gap: 6px; }
+.search input {
+  flex: 1;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 10px 12px;
+  font-size: 14px;
+  outline: none;
+}
+.search input:focus { border-color: var(--accent); }
+.search-results {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  background: rgba(15, 20, 32, 0.97);
+}
+.search-results li {
+  padding: 10px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--panel-border);
+  color: var(--text);
+}
+.search-results li:hover { background: rgba(56, 189, 248, 0.12); }
+.search-results li:last-child { border-bottom: none; }
+.search-results li small { display: block; color: var(--text-dim); margin-top: 2px; }
+
+/* Origen */
+.origin-status {
+  font-size: 13px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.04);
+  border: 1px dashed var(--panel-border);
+  color: var(--text-dim);
+  word-break: break-word;
+}
+.origin-status--set {
+  border-style: solid;
+  border-color: rgba(56, 189, 248, 0.5);
+  color: var(--text);
+}
+
+/* Tiempos */
+.quick-times { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.chip {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--panel-border);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 7px 0;
+  width: 42px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.chip:hover { border-color: var(--accent); }
+.chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #06202e;
+  font-weight: 700;
+}
+.custom-time { display: flex; gap: 6px; }
+.custom-time input {
+  width: 70px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: 14px;
+  outline: none;
+}
+.hint { font-size: 11.5px; color: var(--text-dim); margin: 8px 0 0; }
+
+/* Botones */
+.btn {
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.btn:hover { background: rgba(56, 189, 248, 0.3); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn--ghost { background: rgba(255,255,255,0.05); border-color: var(--panel-border); }
+.btn--ghost:hover { background: rgba(255,255,255,0.12); }
+.btn--danger { background: rgba(248,113,113,0.12); border-color: rgba(248,113,113,0.4); }
+.btn--danger:hover { background: rgba(248,113,113,0.28); }
+
+/* Leyenda */
+.legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.04);
+}
+.legend .swatch {
+  width: 16px; height: 16px;
+  border-radius: 5px;
+  border: 2px solid;
+  flex-shrink: 0;
+}
+.legend .legend__remove {
+  margin-left: auto;
+  background: none; border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 2px;
+}
+.legend .legend__remove:hover { color: var(--danger); }
+.legend .legend__area { color: var(--text-dim); font-size: 11.5px; }
+
+/* Detalle */
+.info { margin: 0; font-size: 13px; display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; }
+.info dt { color: var(--text-dim); }
+.info dd { margin: 0; word-break: break-word; }
+
+.panel__footer { margin-top: auto; }
+.badge {
+  display: inline-block;
+  font-size: 11px;
+  color: var(--text-dim);
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+
+/* Toast */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2000;
+  background: rgba(17, 24, 39, 0.97);
+  border: 1px solid var(--panel-border);
+  border-left: 4px solid var(--accent);
+  border-radius: 10px;
+  padding: 12px 18px;
+  font-size: 13.5px;
+  box-shadow: var(--shadow);
+  max-width: min(480px, calc(100vw - 40px));
+}
+.toast--error { border-left-color: var(--danger); }
+
+/* Cargando */
+.loading {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  display: grid;
+  place-items: center;
+  background: rgba(15, 20, 32, 0.35);
+}
+.loading__spinner {
+  width: 46px; height: 46px;
+  border-radius: 50%;
+  border: 4px solid rgba(56, 189, 248, 0.2);
+  border-top-color: var(--accent);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Móvil */
+@media (max-width: 720px) {
+  .panel {
+    top: auto;
+    left: 10px; right: 10px; bottom: 10px;
+    width: auto;
+    max-height: 55vh;
+  }
+  .panel--collapsed { max-height: none; transform: none; }
+  .panel--collapsed .panel__body { display: none; }
+  .panel--collapsed { bottom: auto; height: auto; }
+}
+
+</style>
+</head>
+<body>
+
+  <!-- ======= PANEL DE CONTROL ======= -->
+  <aside id="panel" class="panel">
+    <header class="panel__header">
+      <div class="panel__brand">
+        <span class="panel__logo">◔</span>
+        <div>
+          <h1>Isocronas</h1>
+          <p>¿Hasta dónde puedo llegar en coche?</p>
+        </div>
+      </div>
+      <button id="panel-toggle" class="panel__toggle" title="Contraer/expandir">–</button>
+    </header>
+
+    <div class="panel__body" id="panel-body">
+
+      <!-- Búsqueda -->
+      <section class="section">
+        <label class="section__label" for="search-input">Buscar ubicación</label>
+        <div class="search">
+          <input id="search-input" type="text" autocomplete="off"
+                 placeholder="Dirección, municipio, lugar…" />
+          <button id="search-btn" class="btn btn--ghost" title="Buscar">⌕</button>
+        </div>
+        <ul id="search-results" class="search-results hidden"></ul>
+      </section>
+
+      <!-- Origen -->
+      <section class="section">
+        <div class="section__label">Punto de origen</div>
+        <div id="origin-status" class="origin-status origin-status--empty">
+          Pulsa sobre el mapa o busca una ubicación.
+        </div>
+      </section>
+
+      <!-- Tiempo -->
+      <section class="section">
+        <div class="section__label">Tiempo máximo de conducción</div>
+        <div class="quick-times" id="quick-times">
+          <button class="chip" data-min="5">5</button>
+          <button class="chip" data-min="10">10</button>
+          <button class="chip" data-min="15">15</button>
+          <button class="chip" data-min="20">20</button>
+          <button class="chip" data-min="30">30</button>
+          <button class="chip" data-min="45">45</button>
+          <button class="chip" data-min="60">60</button>
+        </div>
+        <div class="custom-time">
+          <input id="custom-minutes" type="number" min="1" max="120" placeholder="min" />
+          <button id="add-custom" class="btn">Añadir</button>
+          <button id="clear-all" class="btn btn--danger" title="Eliminar todo">✕</button>
+        </div>
+        <p class="hint">Pulsa un tiempo para calcular su isócrona. Pulsa de nuevo para quitarla.</p>
+      </section>
+
+      <!-- Leyenda -->
+      <section class="section" id="legend-section">
+        <div class="section__label">Isócronas activas</div>
+        <ul id="legend" class="legend"></ul>
+      </section>
+
+      <!-- Info del resultado -->
+      <section class="section" id="info-section">
+        <div class="section__label">Detalle</div>
+        <dl id="info" class="info"></dl>
+      </section>
+
+      <!-- Acciones extra -->
+      <section class="section section--row">
+        <button id="share-btn" class="btn btn--ghost" title="Copiar enlace de esta consulta">🔗 Compartir</button>
+        <button id="export-btn" class="btn btn--ghost" title="Exportar isócronas como GeoJSON">⬇ GeoJSON</button>
+      </section>
+
+      <footer class="panel__footer">
+        <span id="provider-badge" class="badge"></span>
+      </footer>
+    </div>
+  </aside>
+
+  <!-- ======= MAPA ======= -->
+  <main id="map" class="map"></main>
+
+  <!-- Toast -->
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- Scripts -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
+  <script>
+/* ===== js/config.js ===== */
+/**
+ * ============================================================
+ *  CONFIGURACIÓN GLOBAL
+ * ------------------------------------------------------------
+ *  1. Obtén una clave gratuita en https://openrouteservice.org/dev
+ *     (menú "Dashboard" -> "Request a token" -> Free).
+ *  2. Restríngela por HTTP Referrer a tu dominio para que no
+ *     pueda ser reutilizada desde otra web.
+ *  3. Pégala aquí. Si se deja vacía, la app funciona pero
+ *     indica claramente que hay que configurarla.
+ *
+ *  NOTA SOBRE SEGURIDAD:
+ *  - ORS admite claves públicas restringidas por referrer,
+ *    suficientes para un MVP.
+ *  - Para producción con clave privada, añade un proxy propio
+ *    (p. ej. /api/isochrones) y cambia `endpoints.isochrones`
+ *    para que apunte a tu proxy. El resto del código no cambia.
+ * ============================================================
+ */
+window.APP_CONFIG = {
+  // ---- Clave de OpenRouteService ----
+  orsApiKey: "", // <-- PEGA TU CLAVE AQUÍ (entre comillas)
+
+  // ---- Proveedores ----
+  providers: {
+    isochrones: "ors", // "ors" | futuro: "mapbox" | "valhalla" | "graphhopper"
+    geocoding: "nominatim",
+  },
+
+  endpoints: {
+    orsIsochrones: "https://api.openrouteservice.org/v2/isochrones/driving-car",
+    // Proxy opcional para producción (mantiene la clave en servidor):
+    // orsIsochrones: "/api/isochrones",
+    nominatimSearch: "https://nominatim.openstreetmap.org/search",
+    nominatimReverse: "https://nominatim.openstreetmap.org/reverse",
+  },
+
+  // ---- Comportamiento ----
+  map: {
+    initialCenter: [40.4168, -3.7038], // Madrid (España)
+    initialZoom: 12,
+    maxZoom: 19,
+  },
+
+  // Tiempos rápidos disponibles (minutos)
+  quickTimes: [5, 10, 15, 20, 30, 45, 60],
+
+  // Límite de seguridad para el tiempo manual
+  maxMinutes: 120,
+
+  // Modo de transporte MVP (la arquitectura admite añadir más)
+  profile: "driving-car",
+};
+
+
+/* ===== js/providers.js ===== */
+/**
+ * providers.js — Abstracción del motor de isócronas.
+ *
+ * Contrato de un IsochroneProvider:
+ *   async getIsochrones({ lon, lat, minutes[], profile }) -> {
+ *     provider: string,
+ *     features: [ { minutes, areaKm2, polygon: GeoJSON Polygon } ]
+ *   }
+ *
+ * Añadir Mapbox/Valhalla/GraphHopper = implementar esta interfaz
+ * y registrarlo en PROVIDER_REGISTRY. Nada más del código cambia.
+ */
+
+class OpenRouteServiceProvider {
+  constructor() {
+    this.name = "OpenRouteService (OSM)";
+  }
+
+  get key() {
+    return window.APP_CONFIG.orsApiKey;
+  }
+
+  /** Una sola petición para TODOS los rangos (eficiente). */
+  async getIsochrones({ lon, lat, minutes, profile }) {
+    if (!this.key) {
+      throw new Error(
+        "Falta la clave de OpenRouteService. Edita js/config.js → orsApiKey " +
+        "(gratis en openrouteservice.org/dev)."
+      );
+    }
+
+    const ranges = minutes.map((m) => m * 60); // segundos
+    const url = window.APP_CONFIG.endpoints.orsIsochrones;
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: this.key,
+      },
+      body: JSON.stringify({
+        locations: [[lon, lat]],
+        range: ranges,
+        range_type: "time",
+        smoothing: 25,          // polígonos más suaves sobre la red real
+        attributes: ["area"],   // superficie por isócrona (m²)
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`ORS respondió ${res.status}: ${body.slice(0, 200)}`);
+    }
+
+    const data = await res.json();
+    const features = (data.features || []).map((f) => ({
+      minutes: Math.round(f.properties.value / 60),
+      areaKm2: f.properties.area ? f.properties.area / 1e6 : null,
+      polygon: f.geometry,
+    }));
+
+    return { provider: this.name, features };
+  }
+}
+
+/* ---------- Registro de proveedores (extensible) ---------- */
+const PROVIDER_REGISTRY = {
+  ors: () => new OpenRouteServiceProvider(),
+  // mapbox: () => new MapboxIsochroneProvider(),
+  // valhalla: () => new ValhallaProvider(),
+};
+
+function createIsochroneProvider() {
+  const key = window.APP_CONFIG.providers.isochrones;
+  const factory = PROVIDER_REGISTRY[key];
+  if (!factory) throw new Error(`Proveedor de isócronas desconocido: ${key}`);
+  return factory();
+}
+
+
+/* ===== js/map.js ===== */
+/**
+ * map.js — Mapa Leaflet, teselas OSM, marcador de origen arrastrable.
+ */
+const MapController = (() => {
+  let map;
+  let originMarker = null;
+  let onOriginChange = null; // callback(latlng)
+
+  function createIcon() {
+    return L.divIcon({
+      className: "origin-marker",
+      html: '<div class="origin-marker__pulse"></div><div class="origin-marker__dot"></div>',
+      iconSize: [22, 22],
+      iconAnchor: [11, 11],
+    });
+  }
+
+  function init(onOriginChangeCb) {
+    const cfg = window.APP_CONFIG.map;
+    onOriginChange = onOriginChangeCb;
+
+    map = L.map("map", {
+      center: cfg.initialCenter,
+      zoom: cfg.initialZoom,
+      zoomControl: true,
+      worldCopyJump: true,
+    });
+
+    // Teselas OpenStreetMap estándar (libres, sin clave).
+    // Para producción con tráfico alto se puede cambiar a otro proveedor
+    // (p. ej. CARTO con clave propia) editando solo esta línea.
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: cfg.maxZoom,
+    }).addTo(map);
+
+    // Clic en el mapa => establecer origen
+    map.on("click", (e) => setOrigin(e.latlng, { fromUser: true }));
+  }
+
+  function setOrigin(latlng, { fromUser = false } = {}) {
+    if (!originMarker) {
+      originMarker = L.marker(latlng, {
+        icon: createIcon(),
+        draggable: true,
+        zIndexOffset: 1000,
+        title: "Punto de origen (arrástrame)",
+      }).addTo(map);
+      originMarker.on("dragend", () => {
+        const p = originMarker.getLatLng();
+        onOriginChange && onOriginChange(p, { fromUser: true });
+      });
+    } else {
+      originMarker.setLatLng(latlng);
+    }
+    if (fromUser && onOriginChange) onOriginChange(latlng, { fromUser: true });
+  }
+
+  function getOrigin() {
+    return originMarker ? originMarker.getLatLng() : null;
+  }
+
+  function clearOrigin() {
+    if (originMarker) {
+      map.removeLayer(originMarker);
+      originMarker = null;
+    }
+  }
+
+  function flyTo(latlng, zoom = 14) {
+    map.flyTo(latlng, zoom, { duration: 0.9 });
+  }
+
+  function getMap() { return map; }
+
+  return { init, setOrigin, getOrigin, clearOrigin, flyTo, getMap };
+})();
+
+
+/* ===== js/geocoding.js ===== */
+/**
+ * geocoding.js — Búsqueda directa (Nominatim) y geocodificación inversa
+ * para etiquetar el punto de origen.
+ */
+const Geocoder = (() => {
+  const cfg = () => window.APP_CONFIG.endpoints;
+
+  async function search(query, { limit = 6 } = {}) {
+    if (!query || query.trim().length < 3) return [];
+    const url =
+      `${cfg().nominatimSearch}?format=jsonv2&limit=${limit}&addressdetails=1` +
+      `&accept-language=es&q=${encodeURIComponent(query)}`;
+    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    if (!res.ok) throw new Error(`Error de geocodificación (${res.status})`);
+    const data = await res.json();
+    return data.map((d) => ({
+      label: d.display_name,
+      shortLabel: d.name || d.display_name.split(",")[0],
+      lat: parseFloat(d.lat),
+      lon: parseFloat(d.lon),
+      type: d.type,
+    }));
+  }
+
+  async function reverse(lat, lon) {
+    try {
+      const url =
+        `${cfg().nominatimReverse}?format=jsonv2&lat=${lat}&lon=${lon}` +
+        `&zoom=16&accept-language=es`;
+      const res = await fetch(url, { headers: { Accept: "application/json" } });
+      if (!res.ok) return null;
+      const d = await res.json();
+      return d.display_name || null;
+    } catch {
+      return null;
+    }
+  }
+
+  return { search, reverse };
+})();
+
+
+/* ===== js/isochrones.js ===== */
+/**
+ * isochrones.js — Capa de isócronas: dibujo, leyenda, áreas, export.
+ *
+ * Paleta fija por minuto => colores consistentes entre sesiones.
+ */
+const IsochroneLayer = (() => {
+  // Paleta (borde, relleno) — de menor a mayor alcance
+  const PALETTE = {
+    5:  ["#22d3ee", "#0ea5b7"],
+    10: ["#38bdf8", "#0284c7"],
+    15: ["#818cf8", "#4f46e5"],
+    20: ["#a78bfa", "#7c3aed"],
+    30: ["#e879f9", "#c026d3"],
+    45: ["#f472b6", "#db2777"],
+    60: ["#fb7185", "#e11d48"],
+  };
+  const FALLBACK = ["#fbbf24", "#d97706"];
+
+  const active = new Map(); // minutes -> { layer, meta }
+  let layerGroup = null;
+
+  function colors(minutes) {
+    return PALETTE[minutes] || FALLBACK;
+  }
+
+  function ensureGroup(map) {
+    if (!layerGroup) layerGroup = L.layerGroup().addTo(map);
+    return layerGroup;
+  }
+
+  function areaKm2Of(polygon) {
+    try {
+      if (window.turf) return turf.area(polygon) / 1e6;
+    } catch (_) { /* fallback abajo */ }
+    return null;
+  }
+
+  /** Añade/reemplaza una isócrona en el mapa. */
+  function add(map, feature, providerName) {
+    remove(map, feature.minutes, { silent: true });
+    const [border, fill] = colors(feature.minutes);
+
+    const layer = L.geoJSON(feature.polygon, {
+      style: {
+        color: border,
+        weight: 2.5,
+        opacity: 0.95,
+        fillColor: fill,
+        fillOpacity: 0.35,
+      },
+      interactive: false,
+    });
+
+    const area =
+      feature.areaKm2 != null ? feature.areaKm2 : areaKm2Of(feature.polygon);
+
+    const meta = {
+      minutes: feature.minutes,
+      areaKm2: area,
+      polygon: feature.polygon,
+      provider: providerName,
+    };
+
+    layer.addTo(ensureGroup(map));
+    active.set(feature.minutes, { layer, meta });
+    return meta;
+  }
+
+  function remove(map, minutes, { silent = false } = {}) {
+    const entry = active.get(minutes);
+    if (entry && layerGroup) layerGroup.removeLayer(entry.layer);
+    active.delete(minutes);
+    if (!silent) renderLegend();
+  }
+
+  function clear(map) {
+    if (layerGroup && map) map.removeLayer(layerGroup);
+    layerGroup = null;
+    active.clear();
+    renderLegend();
+  }
+
+  function getAll() {
+    return [...active.values()].map((e) => e.meta);
+  }
+
+  function getMinutes() {
+    return [...active.keys()].sort((a, b) => a - b);
+  }
+
+  /* ---------- Leyenda ---------- */
+  function renderLegend() {
+    const ul = document.getElementById("legend");
+    if (!ul) return;
+    ul.innerHTML = "";
+    const items = [...active.entries()].sort((a, b) => a[0] - b[0]);
+    document.getElementById("legend-section").style.display =
+      items.length ? "" : "none";
+
+    for (const [minutes, { meta }] of items) {
+      const [border, fill] = colors(minutes);
+      const li = document.createElement("li");
+
+      const swatch = document.createElement("span");
+      swatch.className = "swatch";
+      swatch.style.borderColor = border;
+      swatch.style.background = fill + "55";
+
+      const label = document.createElement("span");
+      label.innerHTML = `<strong>${minutes} min</strong>` +
+        (meta.areaKm2 ? ` <span class="legend__area">· ${meta.areaKm2.toFixed(1)} km²</span>` : "");
+
+      const rm = document.createElement("button");
+      rm.className = "legend__remove";
+      rm.title = "Quitar";
+      rm.textContent = "✕";
+      rm.addEventListener("click", () => window.dispatchEvent(
+        new CustomEvent("app:remove-range", { detail: { minutes } })
+      ));
+
+      li.append(swatch, label, rm);
+      ul.appendChild(li);
+    }
+  }
+
+  /* ---------- Export GeoJSON ---------- */
+  function toGeoJSON(origin) {
+    const fc = {
+      type: "FeatureCollection",
+      metadata: {
+        origin: origin ? { lat: origin.lat, lon: origin.lng } : null,
+        profile: window.APP_CONFIG.profile,
+        created: new Date().toISOString(),
+      },
+      features: getAll().map((m) => ({
+        type: "Feature",
+        properties: {
+          minutes: m.minutes,
+          area_km2: m.areaKm2,
+          provider: m.provider,
+          mode: "driving-car",
+        },
+        geometry: m.polygon,
+      })),
+    };
+    return fc;
+  }
+
+  return { add, remove, clear, getAll, getMinutes, renderLegend, toGeoJSON, colors };
+})();
+
+
+/* ===== js/ui.js ===== */
+/**
+ * ui.js — Toasts, spinner, panel colapsable, detalle, chips.
+ */
+const UI = (() => {
+  let spinnerEl = null;
+
+  function toast(message, { error = false, ms = 4200 } = {}) {
+    const el = document.getElementById("toast");
+    el.textContent = message;
+    el.classList.remove("hidden");
+    el.classList.toggle("toast--error", error);
+    clearTimeout(el._t);
+    el._t = setTimeout(() => el.classList.add("hidden"), ms);
+  }
+
+  function showLoading(on) {
+    if (on) {
+      if (!spinnerEl) {
+        spinnerEl = document.createElement("div");
+        spinnerEl.className = "loading";
+        spinnerEl.innerHTML = '<div class="loading__spinner"></div>';
+        document.body.appendChild(spinnerEl);
+      }
+      spinnerEl.style.display = "grid";
+    } else if (spinnerEl) {
+      spinnerEl.style.display = "none";
+    }
+  }
+
+  function setOriginStatus(label) {
+    const el = document.getElementById("origin-status");
+    if (!label) {
+      el.textContent = "Pulsa sobre el mapa o busca una ubicación.";
+      el.className = "origin-status origin-status--empty";
+    } else {
+      el.textContent = label;
+      el.className = "origin-status origin-status--set";
+    }
+  }
+
+  function setChipState(minutes, active) {
+    document
+      .querySelectorAll(`#quick-times .chip[data-min="${minutes}"]`)
+      .forEach((c) => c.classList.toggle("active", active));
+  }
+
+  function setProviderBadge(text) {
+    document.getElementById("provider-badge").textContent = text;
+  }
+
+  /** Detalle del resultado: origen, tiempo(s), modo, área, proveedor. */
+  function renderInfo({ originLabel, metas, provider }) {
+    const dl = document.getElementById("info");
+    const section = document.getElementById("info-section");
+    if (!metas || !metas.length) {
+      section.style.display = "none";
+      dl.innerHTML = "";
+      return;
+    }
+    section.style.display = "";
+    const totalArea = metas
+      .filter((m) => m.areaKm2 != null)
+      .reduce((acc, m) => Math.max(acc, m.areaKm2), 0);
+
+    dl.innerHTML = `
+      <dt>Origen</dt><dd>${escapeHtml(originLabel || "—")}</dd>
+      <dt>Tiempos</dt><dd>${metas.map((m) => m.minutes + " min").join(" · ")}</dd>
+      <dt>Modo</dt><dd>Coche (driving-car)</dd>
+      <dt>Área máx.</dt><dd>${totalArea ? "~" + totalArea.toFixed(1) + " km²" : "—"}</dd>
+      <dt>Motor</dt><dd>${escapeHtml(provider || "")}</dd>`;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  function initPanelToggle() {
+    const btn = document.getElementById("panel-toggle");
+    const panel = document.getElementById("panel");
+    btn.addEventListener("click", () => {
+      panel.classList.toggle("panel--collapsed");
+      btn.textContent = panel.classList.contains("panel--collapsed") ? "+" : "–";
+    });
+  }
+
+  return {
+    toast, showLoading, setOriginStatus, setChipState,
+    setProviderBadge, renderInfo, initPanelToggle, escapeHtml,
+  };
+})();
+
+
+/* ===== js/app.js ===== */
+/**
+ * app.js — Orquestación del flujo:
+ *   buscar/clic en mapa → origen → minutos → motor de routing → isócrona.
+ */
+(() => {
+  const provider = createIsochroneProvider();
+  let originLabel = null;
+  let lastProviderName = provider.name;
+
+  /* ================= Inicialización ================= */
+  document.addEventListener("DOMContentLoaded", () => {
+    MapController.init(handleOriginChange);
+    UI.initPanelToggle();
+    UI.setProviderBadge(`Motor: ${provider.name}`);
+    bindSearch();
+    bindTimeControls();
+    bindActions();
+    restoreFromUrl();
+  });
+
+  /* ================= Origen ================= */
+  async function handleOriginChange(latlng) {
+    MapController.setOrigin(latlng);
+    UI.setOriginStatus(`${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)} …`);
+    originLabel = await Geocoder.reverse(latlng.lat, latlng.lng);
+    UI.setOriginStatus(
+      originLabel ||
+      `${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)} (sin dirección)`
+    );
+    refreshInfo();
+    // Recalcular automáticamente las isócronas activas en el nuevo origen
+    const mins = IsochroneLayer.getMinutes();
+    if (mins.length) calculate(mins);
+  }
+
+  /* ================= Cálculo ================= */
+  async function calculate(minutesArray) {
+    const origin = MapController.getOrigin();
+    if (!origin) {
+      UI.toast("Primero selecciona un punto de origen: pulsa en el mapa o busca una ubicación.", { error: true });
+      return;
+    }
+
+    UI.showLoading(true);
+    try {
+      const result = await provider.getIsochrones({
+        lon: origin.lng,
+        lat: origin.lat,
+        minutes: minutesArray,
+        profile: window.APP_CONFIG.profile,
+      });
+      lastProviderName = result.provider;
+
+      const map = MapController.getMap();
+      result.features.forEach((f) => {
+        const meta = IsochroneLayer.add(map, f, result.provider);
+        UI.setChipState(f.minutes, true);
+        return meta;
+      });
+
+      IsochroneLayer.renderLegend();
+      refreshInfo();
+    } catch (err) {
+      console.error(err);
+      UI.toast(err.message || "No se pudo calcular la isócrona.", { error: true, ms: 6000 });
+    } finally {
+      UI.showLoading(false);
+    }
+  }
+
+  function toggleRange(minutes) {
+    if (IsochroneLayer.getMinutes().includes(minutes)) {
+      removeRange(minutes);
+    } else {
+      calculate([minutes]);
+    }
+  }
+
+  function removeRange(minutes) {
+    IsochroneLayer.remove(MapController.getMap(), minutes);
+    UI.setChipState(minutes, false);
+    refreshInfo();
+  }
+
+  function clearAll() {
+    IsochroneLayer.clear(MapController.getMap());
+    document.querySelectorAll(".chip.active").forEach((c) => c.classList.remove("active"));
+    refreshInfo();
+  }
+
+  function refreshInfo() {
+    UI.renderInfo({
+      originLabel,
+      metas: IsochroneLayer.getAll(),
+      provider: lastProviderName,
+    });
+  }
+
+  /* ================= Búsqueda ================= */
+  function bindSearch() {
+    const input = document.getElementById("search-input");
+    const btn = document.getElementById("search-btn");
+    const results = document.getElementById("search-results");
+    let debounce = null;
+
+    const doSearch = async () => {
+      const q = input.value.trim();
+      if (q.length < 3) { results.classList.add("hidden"); return; }
+      try {
+        const items = await Geocoder.search(q);
+        results.innerHTML = "";
+        if (!items.length) {
+          results.innerHTML = '<li style="color:var(--text-dim)">Sin resultados</li>';
+        }
+        items.forEach((it) => {
+          const li = document.createElement("li");
+          li.innerHTML = `${UI.escapeHtml(it.shortLabel)}<small>${UI.escapeHtml(it.label)}</small>`;
+          li.addEventListener("click", () => {
+            const latlng = L.latLng(it.lat, it.lon);
+            MapController.flyTo(latlng, 14);
+            MapController.setOrigin(latlng, { fromUser: true });
+            originLabel = it.label;
+            results.classList.add("hidden");
+            input.value = it.shortLabel;
+          });
+          results.appendChild(li);
+        });
+        results.classList.remove("hidden");
+      } catch (e) {
+        UI.toast("Error al buscar. Inténtalo de nuevo.", { error: true });
+      }
+    };
+
+    input.addEventListener("input", () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(doSearch, 350);
+    });
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
+    btn.addEventListener("click", doSearch);
+    document.addEventListener("click", (e) => {
+      if (!results.contains(e.target) && e.target !== input) results.classList.add("hidden");
+    });
+  }
+
+  /* ================= Controles de tiempo ================= */
+  function bindTimeControls() {
+    document.querySelectorAll("#quick-times .chip").forEach((chip) => {
+      chip.addEventListener("click", () => toggleRange(parseInt(chip.dataset.min, 10)));
+    });
+
+    document.getElementById("add-custom").addEventListener("click", () => {
+      const input = document.getElementById("custom-minutes");
+      const m = parseInt(input.value, 10);
+      const max = window.APP_CONFIG.maxMinutes;
+      if (!m || m < 1) { UI.toast("Introduce un número válido de minutos.", { error: true }); return; }
+      if (m > max) { UI.toast(`El máximo es ${max} minutos.`, { error: true }); return; }
+      input.value = "";
+      toggleRange(m);
+    });
+
+    document.getElementById("clear-all").addEventListener("click", clearAll);
+
+    window.addEventListener("app:remove-range", (e) => removeRange(e.detail.minutes));
+  }
+
+  /* ================= Acciones extra ================= */
+  function bindActions() {
+    // Compartir consulta por URL
+    document.getElementById("share-btn").addEventListener("click", async () => {
+      const origin = MapController.getOrigin();
+      if (!origin) { UI.toast("Selecciona primero un punto de origen.", { error: true }); return; }
+      const mins = IsochroneLayer.getMinutes();
+      const url = new URL(location.href.split("#")[0]);
+      url.hash = `o=${origin.lat.toFixed(6)},${origin.lng.toFixed(6)}` +
+                 (mins.length ? `&r=${mins.join(",")}` : "");
+      try {
+        await navigator.clipboard.writeText(url.toString());
+        UI.toast("Enlace copiado al portapapeles.");
+      } catch {
+        UI.toast(url.toString(), { ms: 8000 });
+      }
+    });
+
+    // Exportar GeoJSON
+    document.getElementById("export-btn").addEventListener("click", () => {
+      const mins = IsochroneLayer.getMinutes();
+      if (!mins.length) { UI.toast("No hay isócronas para exportar.", { error: true }); return; }
+      const fc = IsochroneLayer.toGeoJSON(MapController.getOrigin());
+      const blob = new Blob([JSON.stringify(fc, null, 2)], { type: "application/geo+json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `isocronas_${mins.join("-")}min.geojson`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      UI.toast("GeoJSON descargado.");
+    });
+  }
+
+  /* ================= Compartir / estado por URL ================= */
+  async function restoreFromUrl() {
+    if (!location.hash) return;
+    const params = new URLSearchParams(location.hash.slice(1));
+    const o = (params.get("o") || "").split(",").map(parseFloat);
+    const ranges = (params.get("r") || "").split(",").map(parseInt).filter((n) => n > 0);
+    if (o.length === 2 && !isNaN(o[0]) && !isNaN(o[1])) {
+      const latlng = L.latLng(o[0], o[1]);
+      MapController.setOrigin(latlng, { fromUser: true });
+      MapController.flyTo(latlng, 12);
+      if (ranges.length) setTimeout(() => calculate(ranges), 800);
+    }
+  }
+})();
+
+</script>
+</body>
+</html>
